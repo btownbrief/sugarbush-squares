@@ -311,6 +311,7 @@ html, body {
 /* ------------------------------------------------------------- score bar */
 
 #scorebar {
+  position: relative;
   width: 100%;
   max-width: 520px;
   display: flex;
@@ -319,7 +320,37 @@ html, body {
   margin-top: 6px;
   gap: 8px;
 }
+
+/* the sugarhouse silhouette boiling away behind the buckets */
+#sugarhouse {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 112px;
+  height: 56px;
+  overflow: visible;
+  pointer-events: none;
+}
+#sugarhouse .house { fill: rgba(85, 64, 46, 0.42); }
+#sugarhouse .smoke-puff {
+  fill: rgba(90, 72, 56, 0.4);
+  opacity: 0;
+  animation: puffRise 5.2s linear infinite;
+}
+#sugarhouse .smoke-puff:nth-of-type(2) { animation-delay: 1.7s; }
+#sugarhouse .smoke-puff:nth-of-type(3) { animation-delay: 3.4s; }
+@keyframes puffRise {
+  0% { transform: translate(0, 3px); opacity: 0; }
+  20% { opacity: 0.75; }
+  100% { transform: translate(7px, -16px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sugarhouse .smoke-puff { animation: none; opacity: 0.5; }
+}
+
 .score {
+  position: relative; /* paints above the sugarhouse silhouette */
   display: flex;
   align-items: center;
   gap: 7px;

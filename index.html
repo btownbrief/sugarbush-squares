@@ -18,6 +18,7 @@
 <meta name="twitter:image" content="https://play.btownbrief.com/sugarbush-squares/icon-180.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -63,7 +64,7 @@
       </div>
     </div>
     <footer id="credit">
-      A Btown Games production · <a href="https://www.btownbrief.com" target="_blank" rel="noopener">Read the BTown Brief →</a>
+      A Btown Games production · <a href="https://play.btownbrief.com/">More games →</a> · <a href="https://www.btownbrief.com" target="_blank" rel="noopener">Read the BTown Brief →</a>
     </footer>
   </div>
 
@@ -75,8 +76,17 @@
       <button id="mute" aria-label="Toggle sound">🔊</button>
     </header>
 
-    <!-- Running score: two sap buckets that fill as plots are claimed -->
+    <!-- Running score: two sap buckets that fill as plots are claimed.
+         Between them, the sugarhouse itself boils away (pure decoration). -->
     <div id="scorebar">
+      <svg id="sugarhouse" viewBox="0 0 120 64" aria-hidden="true">
+        <g class="smoke">
+          <circle class="smoke-puff" cx="61" cy="7" r="3.2"/>
+          <circle class="smoke-puff" cx="63" cy="5" r="2.6"/>
+          <circle class="smoke-puff" cx="60" cy="6" r="2.2"/>
+        </g>
+        <path class="house" d="M22 64 V42 L60 24 L98 42 V64 Z M51 30 V16 H69 V30 Z M47 16 L60 9 L73 16 V19 H47 Z"/>
+      </svg>
       <div class="score red" id="scoreRed">
         <svg class="bucket" viewBox="0 0 40 44" aria-hidden="true">
           <defs>

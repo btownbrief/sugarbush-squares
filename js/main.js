@@ -65,6 +65,7 @@ let size = 5;
 let state = createInitialState();
 let busy = false; // an animation or bot think is in flight
 let botTimer = 0;
+let session = 0; // bumped on menu-exit / new game; stale timers check it and bail
 let firstPlayer = RED;
 let tally = { red: 0, blue: 0, quiet: 0 };
 
@@ -101,13 +102,24 @@ function startMatch(chosen) {
 }
 
 function backToSugarhouse() {
+  session++;
   clearTimeout(botTimer);
   busy = false;
   gameEl.classList.add('hidden');
   menuEl.classList.remove('hidden');
 }
 
+// setTimeout that dies quietly if the match it was scheduled in is gone
+// (player left for the sugarhouse or started a new game meanwhile).
+function later(ms, fn) {
+  const mySession = session;
+  return setTimeout(() => {
+    if (session === mySession) fn();
+  }, ms);
+}
+
 function newGame() {
+  session++;
   clearTimeout(botTimer);
   state = createInitialState({ rows: size, cols: size, firstPlayer });
   busy = false;
@@ -310,9 +322,9 @@ function scheduleBotMove() {
   renderTurn();
   // A human-ish pause — even the Boiler wipes its brow between lines.
   const pause = 380 + Math.random() * 420;
-  botTimer = setTimeout(() => {
+  botTimer = later(pause, () => {
     playMove(chooseMove(state, mode));
-  }, pause);
+  });
 }
 
 function playMove(move) {
@@ -406,7 +418,7 @@ function drawSapLine(player, move, onDone) {
   ).onfinish = () => bead.remove();
 
   // Never let a throttled animation stall the game.
-  setTimeout(onDone, D + 110);
+  later(D + 110, onDone);
 }
 
 function claimPlot(player, r, c) {
@@ -595,7 +607,7 @@ function finishGame(status) {
   resultText.textContent = text;
   resultText.className = cls;
   // Let the last claim land before the banner rises.
-  setTimeout(() => resultBar.classList.remove('hidden'), 600);
+  later(600, () => resultBar.classList.remove('hidden'));
 }
 
 /* ------------------------------------------------------------- flurry */

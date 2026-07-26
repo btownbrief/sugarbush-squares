@@ -20,7 +20,7 @@ away one plot carelessly and a good rival will take the whole row.
 ## Boards & modes
 
 - **3×3 quick tap** · **5×5 the sugarbush** (default) · **7×7 full season**
-  — odd boxes on the two big boards, so no ties there.
+  — every board has an odd number of plots, so a boil can't end in a tie.
 - **Pass & play** — two sugarmakers, one phone.
 - **Sap Hauler** 🪣 — takes any free plot and won't hand you one while a
   safe line exists, but can't see chains. Beatable once you can.

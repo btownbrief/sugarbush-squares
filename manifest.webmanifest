@@ -1,0 +1,14 @@
+{
+  "name": "SUGARBUSH SQUARES",
+  "short_name": "Sugarbush",
+  "description": "Dots and Boxes in the maples: run sap lines, claim plots, out-sugar your rival. A Btown Games production.",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#f2e7cb",
+  "theme_color": "#2e2018",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
