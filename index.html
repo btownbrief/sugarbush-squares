@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#2e2018">
+<title>SUGARBUSH SQUARES — Dots and Boxes in the maples</title>
+<meta name="description" content="Dots and Boxes, Burlington style: run sap lines between the taps and claim plots in the sugarbush. Close a plot and a little maple sprouts with your bucket on it. A Btown Games production from the BTown Brief.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SUGARBUSH SQUARES — Dots and Boxes in the maples">
+<meta property="og:description" content="Run sap lines, claim plots, and out-sugar your rival. Pass the phone, or take on the Boiler.">
+<meta property="og:url" content="https://play.btownbrief.com/sugarbush-squares/">
+<meta property="og:image" content="https://play.btownbrief.com/sugarbush-squares/icon-180.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://play.btownbrief.com/sugarbush-squares/icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- Distant hillside of bare early-spring maples -->
+  <svg id="hills" viewBox="0 0 100 18" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 18 L0 10 Q10 6 20 8.5 Q30 4 42 7 Q52 3 63 6.5 Q74 4.5 84 8 Q92 5.5 100 9 L100 18 Z" fill="#8a6a4f" opacity="0.35"/>
+    <path d="M0 18 L0 12.5 Q14 9 26 11 Q38 7.5 52 10 Q66 7 80 10.5 Q90 8.5 100 11.5 L100 18 Z" fill="#6b4d38" opacity="0.45"/>
+  </svg>
+
+  <!-- Gentle drifting flakes/petals live here -->
+  <div id="flurry" aria-hidden="true"></div>
+
+  <!-- Title screen -->
+  <div id="menu" class="screen">
+    <div class="menu-inner">
+      <div id="logo" aria-label="Sugarbush Squares">
+        <span class="l-sugar"><i>S</i><i>U</i><i>G</i><i>A</i><i>R</i><i>B</i><i>U</i><i>S</i><i>H</i></span>
+        <span class="l-squares">SQUARES</span>
+      </div>
+      <div id="tagline">Dots and Boxes in the maples.<br>Run the sap lines — close a plot, keep your turn.</div>
+
+      <div id="sizes" role="group" aria-label="Board size">
+        <button class="size-btn" data-size="3"><b>3×3</b><span>quick tap</span></button>
+        <button class="size-btn selected" data-size="5"><b>5×5</b><span>the sugarbush</span></button>
+        <button class="size-btn" data-size="7"><b>7×7</b><span>full season</span></button>
+      </div>
+
+      <div id="modes">
+        <button class="big-btn mode-big" data-mode="pass">🍁&nbsp; PASS &amp; PLAY</button>
+        <div class="mode-sub">two sugarmakers, one phone</div>
+        <div id="botRow">
+          <button class="bot-btn" data-mode="hauler">
+            <span class="bot-name">🪣 SAP HAULER</span>
+            <span class="bot-blurb">first week on the crew</span>
+          </button>
+          <button class="bot-btn" data-mode="boiler">
+            <span class="bot-name">🔥 THE BOILER</span>
+            <span class="bot-blurb">never leaves the evaporator</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <footer id="credit">
+      A Btown Games production · <a href="https://www.btownbrief.com" target="_blank" rel="noopener">Read the BTown Brief →</a>
+    </footer>
+  </div>
+
+  <!-- Game screen -->
+  <div id="game" class="screen hidden">
+    <header id="topbar">
+      <button id="backBtn" class="chip-btn" aria-label="Back to the sugarhouse">🏚 SUGARHOUSE</button>
+      <div id="tally" aria-hidden="true"></div>
+      <button id="mute" aria-label="Toggle sound">🔊</button>
+    </header>
+
+    <!-- Running score: two sap buckets that fill as plots are claimed -->
+    <div id="scorebar">
+      <div class="score red" id="scoreRed">
+        <svg class="bucket" viewBox="0 0 40 44" aria-hidden="true">
+          <defs>
+            <clipPath id="clipR"><path d="M6 10 L34 10 L30.5 40 L9.5 40 Z"/></clipPath>
+          </defs>
+          <path class="b-body" d="M6 10 L34 10 L30.5 40 L9.5 40 Z"/>
+          <rect class="b-sap" x="4" y="40" width="32" height="32" clip-path="url(#clipR)"/>
+          <path class="b-rim" d="M4.5 8 H35.5 V12 H4.5 Z"/>
+          <path class="b-handle" d="M8 9 Q20 -4 32 9" fill="none"/>
+        </svg>
+        <span class="s-count">0</span>
+        <span class="s-name">RED</span>
+      </div>
+      <div id="turnbar"><span id="turnChip"></span></div>
+      <div class="score blue" id="scoreBlue">
+        <svg class="bucket" viewBox="0 0 40 44" aria-hidden="true">
+          <defs>
+            <clipPath id="clipB"><path d="M6 10 L34 10 L30.5 40 L9.5 40 Z"/></clipPath>
+          </defs>
+          <path class="b-body" d="M6 10 L34 10 L30.5 40 L9.5 40 Z"/>
+          <rect class="b-sap" x="4" y="40" width="32" height="32" clip-path="url(#clipB)"/>
+          <path class="b-rim" d="M4.5 8 H35.5 V12 H4.5 Z"/>
+          <path class="b-handle" d="M8 9 Q20 -4 32 9" fill="none"/>
+        </svg>
+        <span class="s-count">0</span>
+        <span class="s-name">BLUE</span>
+      </div>
+    </div>
+
+    <!-- The plot map. The SVG inside is built by main.js -->
+    <div id="boardWrap">
+      <div id="board"></div>
+      <div id="goAgain" class="hidden" aria-hidden="true">🍁 GO AGAIN!</div>
+    </div>
+
+    <div id="resultbar" class="hidden">
+      <div id="resultText"></div>
+      <div id="resultBtns">
+        <button id="rematchBtn" class="big-btn">↻&nbsp; ANOTHER BOIL</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

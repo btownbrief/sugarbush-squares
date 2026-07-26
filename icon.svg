@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e9dfc2"/>
+      <stop offset="1" stop-color="#cdae7e"/>
+    </linearGradient>
+    <linearGradient id="leafg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#93b75e"/>
+      <stop offset="1" stop-color="#63873e"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="180" height="180" rx="40" fill="url(#sky)"/>
+  <rect x="8" y="8" width="164" height="164" rx="34" fill="none" stroke="#5b4232" stroke-opacity="0.25" stroke-width="3"/>
+
+  <!-- one claimed plot: four taps joined by sap lines -->
+  <g stroke-linecap="round">
+    <line x1="38" y1="38" x2="142" y2="38" stroke="#c8442c" stroke-width="11"/>
+    <line x1="38" y1="142" x2="142" y2="142" stroke="#c8442c" stroke-width="11"/>
+    <line x1="38" y1="38" x2="38" y2="142" stroke="#3d7ea6" stroke-width="11"/>
+    <line x1="142" y1="38" x2="142" y2="142" stroke="#c8442c" stroke-width="11"/>
+    <line x1="38" y1="38" x2="142" y2="38" stroke="#e8a33d" stroke-width="3.5"/>
+    <line x1="38" y1="142" x2="142" y2="142" stroke="#e8a33d" stroke-width="3.5"/>
+  </g>
+
+  <!-- the sprouted maple with its bucket -->
+  <g transform="translate(90, 122)">
+    <ellipse cx="0" cy="3" rx="34" ry="7" fill="rgba(58,42,29,0.22)"/>
+    <path d="M-5.5 3 L-4 -38 L4 -38 L5.5 3 Z" fill="#6b4a33"/>
+    <ellipse cx="-17" cy="-50" rx="21" ry="18" fill="url(#leafg)"/>
+    <ellipse cx="17" cy="-52" rx="21" ry="19" fill="url(#leafg)"/>
+    <ellipse cx="0" cy="-65" rx="24" ry="20" fill="url(#leafg)"/>
+    <ellipse cx="-7" cy="-56" rx="9" ry="6" fill="rgba(246,238,217,0.18)"/>
+    <path d="M4.5 -26 L15 -26" stroke="#96301e" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M9 -26 L21 -26 L19.5 -9 L10.5 -9 Z" fill="#c8442c"/>
+    <path d="M8 -28.5 H22 V-24.5 H8 Z" fill="#96301e"/>
+    <circle cx="15" cy="-21" r="2" fill="#f5b954"/>
+  </g>
+
+  <!-- corner taps last so they sit on top -->
+  <g>
+    <circle cx="38" cy="38" r="12" fill="#3a2a1d"/>
+    <circle cx="142" cy="38" r="12" fill="#3a2a1d"/>
+    <circle cx="38" cy="142" r="12" fill="#3a2a1d"/>
+    <circle cx="142" cy="142" r="12" fill="#3a2a1d"/>
+    <circle cx="34.5" cy="34.5" r="4" fill="#7d604a"/>
+    <circle cx="138.5" cy="34.5" r="4" fill="#7d604a"/>
+    <circle cx="34.5" cy="138.5" r="4" fill="#7d604a"/>
+    <circle cx="138.5" cy="138.5" r="4" fill="#7d604a"/>
+  </g>
+</svg>
