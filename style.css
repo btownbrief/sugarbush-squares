@@ -363,23 +363,27 @@ html, body {
   100% { transform: scale(1.05); }
 }
 
-/* turn chip */
-#turnbar { flex: 1; text-align: center; min-width: 0; }
+/* turn chip — its own row so it never fights the buckets for width */
+#turnbar {
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+  margin-top: 7px;
+  min-height: 28px;
+}
 #turnChip {
   display: inline-block;
-  font-size: clamp(11px, 1.8vh, 14px);
+  font-size: clamp(12px, 1.9vh, 15px);
   font-weight: 900;
   letter-spacing: 0.05em;
   color: var(--cream);
   background: var(--bark-2);
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 999px;
   white-space: nowrap;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: background-color 0.25s ease;
 }
+#turnChip:empty { display: none; }
 #turnChip.red { background: var(--red); }
 #turnChip.blue { background: var(--blue); }
 #turnChip.thinking { animation: thinkPulse 1.1s ease-in-out infinite; }
@@ -457,7 +461,8 @@ html, body {
 #goAgain {
   position: absolute;
   left: 50%;
-  top: 8%;
+  top: 4%;
+  white-space: nowrap;
   transform: translateX(-50%);
   font-size: clamp(16px, 2.6vh, 22px);
   font-weight: 900;
