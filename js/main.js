@@ -11,6 +11,7 @@ import {
 } from './engine.js';
 import { chooseMove } from './bot.js';
 import { sound } from './audio.js';
+import { OnlineMatch, savedSession, clearSession, getName } from './rooms.js';
 
 const $ = (id) => document.getElementById(id);
 const menuEl = $('menu');
@@ -22,6 +23,17 @@ const resultBar = $('resultbar');
 const resultText = $('resultText');
 const goAgainEl = $('goAgain');
 const scoreEls = { [RED]: $('scoreRed'), [BLUE]: $('scoreBlue') };
+const backBtn = $('backBtn');
+const rematchBtn = $('rematchBtn');
+const onlinePanel = $('onlinePanel');
+const opTitle = $('opTitle');
+const opName = $('opName');
+const opCodeWrap = $('opCodeWrap');
+const opCode = $('opCode');
+const opError = $('opError');
+const lobbyEl = $('lobby');
+const lobbyCode = $('lobbyCode');
+const rejoinBtn = $('rejoinBtn');
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -60,7 +72,7 @@ function edgeKey(m) {
 
 /* ------------------------------------------------------------- game shell */
 
-let mode = 'pass'; // 'pass' | 'hauler' | 'boiler'
+let mode = 'pass'; // 'pass' | 'hauler' | 'boiler' | 'online'
 let size = 5;
 let state = createInitialState();
 let busy = false; // an animation or bot think is in flight
@@ -68,6 +80,8 @@ let botTimer = 0;
 let session = 0; // bumped on menu-exit / new game; stale timers check it and bail
 let firstPlayer = RED;
 let tally = { red: 0, blue: 0, quiet: 0 };
+let online = null; // { match, myPlayer } while in an online crew
+let pushStalled = false; // waiting for a successful poll after two failed pushes
 
 let svg = null;
 let layers = null; // { fills, ghosts, saps, trees, dots, fx, preview }
@@ -83,8 +97,8 @@ document.querySelectorAll('.size-btn').forEach((btn) => {
 document.querySelectorAll('[data-mode]').forEach((btn) => {
   btn.addEventListener('click', () => startMatch(btn.dataset.mode));
 });
-$('backBtn').addEventListener('click', backToSugarhouse);
-$('rematchBtn').addEventListener('click', newGame);
+backBtn.addEventListener('click', backToSugarhouse);
+rematchBtn.addEventListener('click', rematch);
 $('mute').addEventListener('click', () => {
   $('mute').textContent = sound.toggleMuted() ? '🔇' : '🔊';
 });
@@ -102,11 +116,28 @@ function startMatch(chosen) {
 }
 
 function backToSugarhouse() {
+  if (online) {
+    // Leaving mid-crew ends the game for both phones — ask for a second tap.
+    if (backBtn.dataset.armed !== '1') {
+      backBtn.dataset.armed = '1';
+      backBtn.textContent = '🏚 LEAVE?';
+      later(2500, () => {
+        backBtn.dataset.armed = '';
+        backBtn.textContent = '🏚 SUGARHOUSE';
+      });
+      return;
+    }
+    online.match.leave(); // fire and forget; stops polling + clears session
+    online = null;
+    backBtn.dataset.armed = '';
+    backBtn.textContent = '🏚 SUGARHOUSE';
+  }
   session++;
   clearTimeout(botTimer);
   busy = false;
   gameEl.classList.add('hidden');
   menuEl.classList.remove('hidden');
+  refreshRejoin();
 }
 
 // setTimeout that dies quietly if the match it was scheduled in is gone
@@ -130,6 +161,14 @@ function newGame() {
   renderTally();
   renderTurn();
   if (isBotsTurn()) scheduleBotMove();
+}
+
+function rematch() {
+  if (online) {
+    onlineRematch();
+  } else {
+    newGame();
+  }
 }
 
 /* ------------------------------------------------------------- the board */
@@ -280,8 +319,17 @@ function nearestOpenEdge(ev) {
   return best;
 }
 
+function localTapBlocked() {
+  if (busy || isBotsTurn() || getStatus(state).over) return true;
+  // A box can grant several turns in a row, so the engine's current turn —
+  // never an assumed red/blue alternation — is the online authority.
+  return Boolean(online && (
+    state.turn !== online.myPlayer || online.match.status !== 'playing'
+  ));
+}
+
 function onPointer(ev) {
-  if (busy || isBotsTurn() || getStatus(state).over) return;
+  if (localTapBlocked()) return;
   // Preview under a pressed finger (or a hovering mouse).
   if (ev.buttons === 0 && ev.pointerType !== 'mouse') return;
   const m = nearestOpenEdge(ev);
@@ -300,7 +348,7 @@ function onPointer(ev) {
 }
 
 function onPointerUp(ev) {
-  if (busy || isBotsTurn() || getStatus(state).over) return;
+  if (localTapBlocked()) return;
   const m = nearestOpenEdge(ev) ?? previewMove;
   clearPreview();
   if (m) playMove(m);
@@ -314,7 +362,7 @@ function clearPreview() {
 /* ------------------------------------------------------------- turns */
 
 function isBotsTurn() {
-  return mode !== 'pass' && !getStatus(state).over && state.turn === BLUE;
+  return mode !== 'pass' && mode !== 'online' && !getStatus(state).over && state.turn === BLUE;
 }
 
 function scheduleBotMove() {
@@ -334,9 +382,13 @@ function playMove(move) {
   const claimed = boxesCompletedBy(state, move) > 0
     ? adjacentBoxes(state, move).filter(({ r, c }) => boxSides(state, r, c) === 3)
     : [];
+  const moveSession = session;
   state = applyMove(state, move);
+  const pushed = online ? pushOnline(state) : Promise.resolve(true);
 
-  drawSapLine(player, move, () => {
+  drawSapLine(player, move, async () => {
+    const accepted = await pushed;
+    if (!accepted || session !== moveSession) return;
     if (claimed.length > 0) {
       sound.pop(claimed.length);
       for (const { r, c } of claimed) claimPlot(player, r, c);
@@ -360,12 +412,11 @@ function playMove(move) {
 
 /* ------------------------------------------------------------- rendering */
 
-function drawSapLine(player, move, onDone) {
+function appendSapLine(player, move) {
   const ghost = layers.ghosts.querySelector(`[data-edge="${CSS.escape(edgeKey(move))}"]`);
   if (ghost) ghost.remove();
 
   const { x1, y1, x2, y2 } = edgeEnds(move);
-  const len = Math.hypot(x2 - x1, y2 - y1);
   const line = document.createElementNS(SVG_NS, 'line');
   line.setAttribute('x1', x1);
   line.setAttribute('y1', y1);
@@ -382,7 +433,12 @@ function drawSapLine(player, move, onDone) {
   core.setAttribute('y2', y2);
   core.classList.add('sap-core');
   layers.saps.appendChild(core);
+  return { line, core, x1, y1, x2, y2 };
+}
 
+function drawSapLine(player, move, onDone) {
+  const { line, core, x1, y1, x2, y2 } = appendSapLine(player, move);
+  const len = Math.hypot(x2 - x1, y2 - y1);
   sound.tap();
 
   if (reducedMotion || !line.animate) {
@@ -421,15 +477,15 @@ function drawSapLine(player, move, onDone) {
   later(D + 110, onDone);
 }
 
-function claimPlot(player, r, c) {
+function claimPlot(player, r, c, animate = true) {
   const fill = layers.fills.querySelector(`[data-plot="${CSS.escape(`${r},${c}`)}"]`);
   if (fill) fill.classList.add(player === RED ? 'red' : 'blue');
-  sproutMaple(player, r, c);
-  burst(player, r, c);
+  sproutMaple(player, r, c, animate);
+  if (animate) burst(player, r, c);
 }
 
 // A little maple sprouts in the plot, with the claimer's bucket on the trunk.
-function sproutMaple(player, r, c) {
+function sproutMaple(player, r, c, animate = true) {
   const cx = PAD + c * CELL + CELL / 2;
   const groundY = PAD + r * CELL + CELL * 0.8;
   const bucket = player === RED ? '#c8442c' : '#3d7ea6';
@@ -465,7 +521,7 @@ function sproutMaple(player, r, c) {
   inner.style.transformOrigin = '50% 100%';
   inner.style.transform = `rotate(${lean}deg) scale(${grow})`;
 
-  if (!reducedMotion && inner.animate) {
+  if (animate && !reducedMotion && inner.animate) {
     inner.animate(
       [
         { transform: `rotate(${lean}deg) scale(0)` },
@@ -504,10 +560,56 @@ function burst(player, r, c) {
   ).onfinish = () => ring.remove();
 }
 
+/** Repaint a received/resumed state without replaying its old animations. */
+function rebuildBoard() {
+  session++;
+  clearTimeout(botTimer);
+  busy = false;
+  previewMove = null;
+  goAgainEl.classList.add('hidden');
+  resultBar.classList.add('hidden');
+  rematchBtn.classList.remove('hidden');
+  buildBoard();
+
+  for (let r = 0; r <= state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      const owner = state.h[r * state.cols + c];
+      if (owner) appendSapLine(owner, { o: 'h', r, c });
+    }
+  }
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c <= state.cols; c++) {
+      const owner = state.v[r * (state.cols + 1) + c];
+      if (owner) appendSapLine(owner, { o: 'v', r, c });
+    }
+  }
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      const owner = state.boxes[r * state.cols + c];
+      if (owner) claimPlot(owner, r, c, false);
+    }
+  }
+
+  renderScores();
+  renderTally();
+  const status = getStatus(state);
+  if (status.over) finishGame(status);
+  else renderTurn();
+}
+
 function flashGoAgain() {
   goAgainEl.classList.add('hidden');
   void goAgainEl.offsetWidth; // restart the animation on back-to-back claims
   goAgainEl.classList.remove('hidden');
+}
+
+function colorKey(player) {
+  return player === RED ? 'red' : 'blue';
+}
+
+function opponentName(fallback = 'FRIEND') {
+  const opponent = online && online.match.opponents()[0];
+  return (opponent && opponent.name) || fallback;
 }
 
 function renderScores() {
@@ -521,7 +623,13 @@ function renderScores() {
     const sap = el.querySelector('.b-sap');
     sap.setAttribute('y', String(40 - 30 * Math.min(1, frac * 2)));
   }
-  if (mode !== 'pass') {
+  if (mode === 'online') {
+    for (const p of [RED, BLUE]) {
+      scoreEls[p].querySelector('.s-name').textContent = p === online.myPlayer
+        ? 'YOU'
+        : opponentName().toUpperCase();
+    }
+  } else if (mode !== 'pass') {
     scoreEls[RED].querySelector('.s-name').textContent = 'YOU';
     scoreEls[BLUE].querySelector('.s-name').textContent = BOT_NAMES[mode];
   } else {
@@ -550,6 +658,16 @@ function renderTurn() {
   turnChip.className = red ? 'red' : 'blue';
   if (mode === 'pass') {
     turnChip.textContent = red ? "RED'S TAP" : "BLUE'S TAP";
+  } else if (mode === 'online') {
+    if (status.turn === online.myPlayer) {
+      turnChip.textContent = 'YOUR TAP';
+    } else {
+      const opponent = online.match.opponents()[0] || {};
+      turnChip.textContent = opponent.away
+        ? `${(opponent.name || 'YOUR FRIEND').toUpperCase()} STEPPED OUT OF THE WOODS…`
+        : `WAITING ON ${(opponent.name || 'YOUR FRIEND').toUpperCase()}…`;
+      turnChip.classList.add('thinking');
+    }
   } else if (red) {
     turnChip.textContent = 'YOUR TAP';
   } else {
@@ -560,15 +678,29 @@ function renderTurn() {
 
 function renderTally() {
   const quiet = tally.quiet ? ` · ${tally.quiet} split` : '';
+  tallyEl.replaceChildren();
+  const addScore = (player, text) => {
+    const span = document.createElement('span');
+    span.className = `t-${colorKey(player)}`;
+    span.textContent = text;
+    tallyEl.appendChild(span);
+  };
   if (mode === 'pass') {
-    tallyEl.innerHTML =
-      `<span class="t-red">RED ${tally.red}</span> — ` +
-      `<span class="t-blue">${tally.blue} BLUE</span>${quiet}`;
+    addScore(RED, `RED ${tally.red}`);
+    tallyEl.append(' — ');
+    addScore(BLUE, `${tally.blue} BLUE`);
+  } else if (mode === 'online') {
+    const mine = online.myPlayer;
+    const theirs = mine === RED ? BLUE : RED;
+    addScore(mine, `YOU ${tally[colorKey(mine)]}`);
+    tallyEl.append(' — ');
+    addScore(theirs, `${tally[colorKey(theirs)]} ${opponentName('PAL').toUpperCase()}`);
   } else {
-    tallyEl.innerHTML =
-      `<span class="t-red">YOU ${tally.red}</span> — ` +
-      `<span class="t-blue">${tally.blue} ${BOT_NAMES[mode]}</span>${quiet}`;
+    addScore(RED, `YOU ${tally.red}`);
+    tallyEl.append(' — ');
+    addScore(BLUE, `${tally.blue} ${BOT_NAMES[mode]}`);
   }
+  tallyEl.append(quiet);
 }
 
 /* ------------------------------------------------------------- endgame */
@@ -583,6 +715,18 @@ function finishGame(status) {
     text = `AN EVEN SPLIT — ${score}`;
     sound.draw();
     firstPlayer = firstPlayer === RED ? BLUE : RED;
+  } else if (mode === 'online') {
+    const iWon = status.winner === online.myPlayer;
+    tally[colorKey(status.winner)]++;
+    cls = status.winner === RED ? 'red-win' : 'blue-win';
+    if (iWon) {
+      text = `YOU OUT-SUGAR ${opponentName('YOUR FRIEND').toUpperCase()}! ${score}`;
+      sound.win();
+    } else {
+      text = `${opponentName('YOUR FRIEND').toUpperCase()} TAPS THE WHOLE HILLSIDE! ${score}`;
+      sound.lose();
+    }
+    firstPlayer = status.winner === RED ? BLUE : RED; // loser opens the next boil
   } else if (status.winner === RED) {
     tally.red++;
     cls = 'red-win';
@@ -609,6 +753,368 @@ function finishGame(status) {
   // Let the last claim land before the banner rises.
   later(600, () => resultBar.classList.remove('hidden'));
 }
+
+/* ------------------------------------------------------------- online play */
+// Two phones, one shared engine state, refereed by the rooms layer
+// (js/rooms.js → Supabase). The host is the player a fresh engine state puts
+// first; the friend takes the other player. Extra turns come only from the
+// received engine state — this UI never assumes that seats alternate.
+
+const GAME = 'sugarbush-squares';
+const HOST_PLAYER = createInitialState().turn;
+const JOIN_PLAYER = HOST_PLAYER === RED ? BLUE : RED;
+let panelIntent = 'host';
+let pollErrors = 0;
+
+$('hostBtn').addEventListener('click', () => openPanel('host'));
+$('joinBtn').addEventListener('click', () => openPanel('join'));
+$('opCancel').addEventListener('click', closePanel);
+$('opGo').addEventListener('click', onlineGo);
+$('lobbyCancel').addEventListener('click', cancelLobby);
+rejoinBtn.addEventListener('click', rejoinCrew);
+opCode.addEventListener('input', () => {
+  opCode.value = opCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+});
+[opName, opCode].forEach((el) => el.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') onlineGo();
+}));
+
+function openPanel(intent) {
+  panelIntent = intent;
+  opTitle.textContent = intent === 'host' ? 'START A SUGAR CREW' : 'JOIN A SUGAR CREW';
+  $('opGo').textContent = intent === 'host' ? 'GET A CODE' : 'TAP IN';
+  opCodeWrap.classList.toggle('hidden', intent === 'host');
+  opError.classList.add('hidden');
+  opName.value = opName.value || getName();
+  onlinePanel.classList.remove('hidden');
+  (intent === 'join' && opName.value ? opCode : opName).focus();
+}
+
+function closePanel() {
+  onlinePanel.classList.add('hidden');
+}
+
+const FRIENDLY_ERRORS = {
+  not_found: 'No sugar crew with that code — double-check the letters.',
+  room_full: 'That crew already started tapping.',
+  room_started: 'That crew already started tapping.',
+  not_ready: "Online play isn't switched on yet — check back soon!",
+  offline: "Can't reach the sugarbush — are you online?",
+};
+
+function friendly(err) {
+  if (err && err.code === 'wrong_game') {
+    return `That code is for ${String(err.detail || 'another game').replace(/-/g, ' ')} — head there to use it.`;
+  }
+  return (err && FRIENDLY_ERRORS[err.code]) || 'The sap line kinked — please try again.';
+}
+
+async function onlineGo() {
+  const name = opName.value.trim();
+  if (!name) {
+    opError.textContent = 'Every sugarmaker needs a name.';
+    opError.classList.remove('hidden');
+    opName.focus();
+    return;
+  }
+  const go = $('opGo');
+  go.disabled = true;
+  opError.classList.add('hidden');
+  try {
+    if (panelIntent === 'host') {
+      const match = await OnlineMatch.create({
+        game: GAME,
+        name,
+        state: createInitialState({ rows: size, cols: size }),
+        seats: 2,
+      });
+      closePanel();
+      openLobby(match);
+    } else {
+      const code = opCode.value.trim();
+      if (code.length !== 4) {
+        opError.textContent = 'The crew code is 4 letters.';
+        opError.classList.remove('hidden');
+        opCode.focus();
+        return;
+      }
+      const match = await OnlineMatch.join({ game: GAME, code, name });
+      closePanel();
+      enterOnlineGame(match);
+    }
+  } catch (err) {
+    opError.textContent = friendly(err);
+    opError.classList.remove('hidden');
+  } finally {
+    go.disabled = false;
+  }
+}
+
+function openLobby(match) {
+  lobbyCode.textContent = match.code;
+  lobbyEl.classList.remove('hidden');
+  match.start({
+    onStatus: (status) => {
+      if (status === 'playing') {
+        lobbyEl.classList.add('hidden');
+        enterOnlineGame(match);
+      }
+    },
+    onError: () => {}, // the next waiting-room poll can recover on its own
+  });
+  lobbyEl._match = match;
+}
+
+function cancelLobby() {
+  const match = lobbyEl._match;
+  if (match) match.leave();
+  lobbyEl._match = null;
+  lobbyEl.classList.add('hidden');
+  refreshRejoin();
+}
+
+async function rejoinCrew() {
+  rejoinBtn.disabled = true;
+  try {
+    const match = await OnlineMatch.resume({ game: GAME });
+    if (match.status === 'waiting') openLobby(match);
+    else enterOnlineGame(match);
+  } catch {
+    clearSession(GAME);
+    refreshRejoin();
+  } finally {
+    rejoinBtn.disabled = false;
+  }
+}
+
+function refreshRejoin() {
+  const saved = savedSession(GAME);
+  rejoinBtn.classList.toggle('hidden', !saved);
+  if (saved) rejoinBtn.textContent = `↩ REJOIN YOUR SUGAR CREW (${saved.code})`;
+}
+
+function enterOnlineGame(match) {
+  clearTimeout(botTimer);
+  mode = 'online';
+  online = { match, myPlayer: match.seat === 0 ? HOST_PLAYER : JOIN_PLAYER };
+  tally = { red: 0, blue: 0, quiet: 0 };
+  pollErrors = 0;
+  pushStalled = false;
+  state = match.state;
+  size = state.rows;
+  document.querySelectorAll('.size-btn').forEach((button) => {
+    button.classList.toggle('selected', Number(button.dataset.size) === size);
+  });
+  menuEl.classList.add('hidden');
+  onlinePanel.classList.add('hidden');
+  lobbyEl.classList.add('hidden');
+  gameEl.classList.remove('hidden');
+  backBtn.dataset.armed = '';
+  backBtn.textContent = '🏚 SUGARHOUSE';
+  rebuildBoard();
+  match.start({
+    onState: onRemoteState,
+    onStatus: onRemoteStatus,
+    onPresence: onRemotePresence,
+    onError: onPollError,
+  });
+  if (match.status === 'over' && !getStatus(state).over) onRemoteStatus('over');
+}
+
+function addedEdges(previous, next) {
+  if (previous.rows !== next.rows || previous.cols !== next.cols) return null;
+  const added = [];
+  for (const orientation of ['h', 'v']) {
+    if (previous[orientation].length !== next[orientation].length) return null;
+    for (let i = 0; i < next[orientation].length; i++) {
+      const before = previous[orientation][i];
+      const after = next[orientation][i];
+      if (before === after) continue;
+      if (before !== 0 || after === 0) return null;
+      if (orientation === 'h') {
+        added.push({ o: 'h', r: Math.floor(i / next.cols), c: i % next.cols, player: after });
+      } else {
+        const width = next.cols + 1;
+        added.push({ o: 'v', r: Math.floor(i / width), c: i % width, player: after });
+      }
+    }
+  }
+  return added;
+}
+
+function claimedPlots(previous, next) {
+  if (previous.boxes.length !== next.boxes.length) return [];
+  const claimed = [];
+  for (let i = 0; i < next.boxes.length; i++) {
+    if (previous.boxes[i] === 0 && next.boxes[i] !== 0) {
+      claimed.push({
+        r: Math.floor(i / next.cols),
+        c: i % next.cols,
+        player: next.boxes[i],
+      });
+    }
+  }
+  return claimed;
+}
+
+function onRemoteState(newState) {
+  pollErrors = 0;
+  pushStalled = false;
+  const previous = state;
+  state = newState;
+  size = newState.rows;
+  const added = addedEdges(previous, newState);
+  const claimed = claimedPlots(previous, newState);
+
+  if (!busy && added && added.length === 1) {
+    // One ordinary remote tap: animate it. Several taps (including a fast
+    // claim chain), a rematch, or conflict truth repaint cold below.
+    const moveSession = session;
+    const [{ player, ...move }] = added;
+    busy = true;
+    resultBar.classList.add('hidden');
+    drawSapLine(player, move, () => {
+      if (session !== moveSession) return;
+      if (claimed.length > 0) {
+        sound.pop(claimed.length);
+        for (const plot of claimed) claimPlot(plot.player, plot.r, plot.c);
+        renderScores();
+        bumpScore(player);
+      }
+      const status = getStatus(state);
+      if (status.over) {
+        finishGame(status);
+        return;
+      }
+      if (claimed.length > 0 && state.turn === player) {
+        sound.again();
+        flashGoAgain();
+      }
+      busy = false;
+      renderTurn();
+    });
+  } else {
+    rebuildBoard();
+  }
+}
+
+function onRemoteStatus(status) {
+  if (status !== 'over') return;
+  const opponent = online && online.match.opponents()[0];
+  if (opponent && opponent.left && !getStatus(state).over) {
+    turnChip.className = '';
+    turnChip.textContent = '';
+    resultText.textContent = `${(opponent.name || 'YOUR FRIEND').toUpperCase()} LEFT THE SUGARBUSH`;
+    resultText.className = '';
+    rematchBtn.classList.add('hidden');
+    resultBar.classList.remove('hidden');
+  }
+}
+
+function onRemotePresence(opponents) {
+  pollErrors = 0;
+  if (pushStalled) {
+    // A successful poll after both push attempts failed tells us whether the
+    // server accepted the tap. Repaint its truth and unlock the board.
+    pushStalled = false;
+    state = online.match.state;
+    size = state.rows;
+    rebuildBoard();
+    return;
+  }
+  const opponent = opponents[0];
+  if (opponent && opponent.left) rematchBtn.classList.add('hidden');
+  renderScores();
+  renderTally();
+  if (!busy) renderTurn();
+}
+
+function onPollError(err) {
+  if (err && err.code === 'not_found') {
+    online.match.stop();
+    clearSession(GAME);
+    online = null;
+    mode = 'pass';
+    session++;
+    gameEl.classList.add('hidden');
+    menuEl.classList.remove('hidden');
+    refreshRejoin();
+    return;
+  }
+  pollErrors++;
+  if (pollErrors >= 3 && !getStatus(state).over) {
+    turnChip.className = 'thinking';
+    turnChip.textContent = 'KINKED SAP LINE — HANG TIGHT…';
+  }
+}
+
+async function pushOnline(nextState) {
+  const crew = online;
+  if (!crew) return false;
+  const { match } = crew;
+  const push = () => match.push(nextState, { over: getStatus(nextState).over });
+  try {
+    await push();
+    pollErrors = 0;
+    pushStalled = false;
+    return true;
+  } catch (err) {
+    if (err && err.code === 'version_conflict') {
+      if (online === crew && state !== match.state) {
+        state = match.state;
+        size = state.rows;
+        rebuildBoard();
+      }
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (online !== crew) return false;
+    try {
+      await push();
+      pollErrors = 0;
+      pushStalled = false;
+      return true;
+    } catch (retryErr) {
+      if (retryErr && retryErr.code === 'version_conflict') {
+        if (state !== match.state) {
+          state = match.state;
+          size = state.rows;
+          rebuildBoard();
+        }
+      } else {
+        pushStalled = true;
+        onPollError(retryErr);
+      }
+      return false;
+    }
+  }
+}
+
+async function onlineRematch() {
+  if (!online) return;
+  const crew = online;
+  const fresh = createInitialState({ rows: size, cols: size, firstPlayer });
+  state = fresh;
+  rebuildBoard();
+  try {
+    await crew.match.push(fresh, {});
+    pollErrors = 0;
+    pushStalled = false;
+    renderTurn();
+  } catch (err) {
+    if (err && err.code === 'version_conflict') {
+      if (state !== crew.match.state) {
+        state = crew.match.state;
+        size = state.rows;
+        rebuildBoard();
+      }
+    } else {
+      onPollError(err);
+    }
+  }
+}
+
+refreshRejoin();
 
 /* ------------------------------------------------------------- flurry */
 // A dozen drifting flakes and petals, randomized once at load.

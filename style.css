@@ -541,3 +541,121 @@ html, body {
 }
 #resultText.red-win { color: var(--red-deep); }
 #resultText.blue-win { color: var(--blue-deep); }
+
+/* ------------------------------------------------------------ online play */
+
+.online-label {
+  margin-top: 0.6vh;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bark-2);
+}
+#onlineRow {
+  display: flex;
+  gap: 10px;
+  width: min(100%, 340px);
+}
+#rejoinBtn { margin-top: 4px; }
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(46, 32, 24, 0.68);
+  backdrop-filter: blur(3px);
+}
+.op-card {
+  width: min(92vw, 340px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 18px;
+  color: var(--bark);
+  background: linear-gradient(180deg, var(--cream), var(--cream-2));
+  border: 3px solid var(--bark-2);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(46, 32, 24, 0.45);
+  text-align: center;
+}
+.op-title {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+.op-label {
+  margin-bottom: -6px;
+  color: var(--bark-2);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: left;
+}
+.op-card input {
+  width: 100%;
+  padding: 12px;
+  color: var(--bark);
+  background: rgba(255, 255, 255, 0.55);
+  border: 2px solid rgba(85, 64, 46, 0.35);
+  border-radius: 12px;
+  outline: none;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  user-select: text;
+}
+.op-card input:focus { border-color: var(--sap-deep); }
+#opCode {
+  font-size: 24px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+}
+.op-error {
+  color: var(--red-deep);
+  font-size: 13px;
+  font-weight: 800;
+}
+.op-btns {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.op-btns .big-btn {
+  padding: 12px 22px;
+  font-size: 16px;
+}
+.op-btns button:disabled, #rejoinBtn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+#lobbyCode {
+  padding: 6px 0;
+  color: var(--sap-deep);
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+  text-shadow: 0 2px 0 rgba(246, 238, 217, 0.8);
+  animation: lobbyPulse 1.6s ease-in-out infinite;
+}
+@keyframes lobbyPulse {
+  50% { opacity: 0.7; }
+}
+#lobbyHint {
+  color: var(--bark-2);
+  font-size: 13px;
+}
+
+@media (max-height: 680px) {
+  .menu-inner { gap: 1.5vh; }
+  #modes { gap: 6px; }
+  .bot-btn { padding-top: 8px; padding-bottom: 7px; }
+}
