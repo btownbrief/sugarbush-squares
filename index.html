@@ -154,12 +154,23 @@
         <span class="s-name">BLUE</span>
       </div>
     </div>
-    <div id="turnbar"><span id="turnChip"></span></div>
+    <div id="leadMeter" role="img" aria-label="Score tied at 0 plots each">
+      <div class="lead-split" aria-hidden="true"></div>
+      <span id="leadLabel" aria-hidden="true">EVEN</span>
+    </div>
+    <div id="turnbar">
+      <span id="turnChip"></span>
+      <span id="chainChip" class="hidden">🍁 0 PLOTS THIS TURN</span>
+    </div>
 
     <!-- The plot map. The SVG inside is built by main.js -->
     <div id="boardWrap">
       <div id="board"></div>
-      <div id="goAgain" class="hidden" aria-hidden="true">🍁 GO AGAIN!</div>
+      <div id="goAgain" class="hidden" aria-hidden="true">
+        <span class="go-multi hidden"></span>
+        <span>🍁 GO AGAIN!</span>
+      </div>
+      <div id="winFlourish" aria-hidden="true"></div>
     </div>
 
     <div id="resultbar" class="hidden">
@@ -168,6 +179,7 @@
         <button id="rematchBtn" class="big-btn">↻&nbsp; ANOTHER BOIL</button>
       </div>
     </div>
+    <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
   </div>
 </div>
 <script type="module" src="js/main.js"></script>

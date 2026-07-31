@@ -22,6 +22,12 @@ const tallyEl = $('tally');
 const resultBar = $('resultbar');
 const resultText = $('resultText');
 const goAgainEl = $('goAgain');
+const goMultiEl = goAgainEl.querySelector('.go-multi');
+const chainChip = $('chainChip');
+const leadMeter = $('leadMeter');
+const leadLabel = $('leadLabel');
+const winFlourish = $('winFlourish');
+const announcer = $('announcer');
 const scoreEls = { [RED]: $('scoreRed'), [BLUE]: $('scoreBlue') };
 const backBtn = $('backBtn');
 const rematchBtn = $('rematchBtn');
@@ -86,6 +92,8 @@ let pushStalled = false; // waiting for a successful poll after two failed pushe
 let svg = null;
 let layers = null; // { fills, ghosts, saps, trees, dots, fx, preview }
 let previewMove = null;
+let chainPlayer = 0;
+let chainPlots = 0;
 
 document.querySelectorAll('.size-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -135,6 +143,7 @@ function backToSugarhouse() {
   session++;
   clearTimeout(botTimer);
   busy = false;
+  clearPresentation();
   gameEl.classList.add('hidden');
   menuEl.classList.remove('hidden');
   refreshRejoin();
@@ -152,11 +161,13 @@ function later(ms, fn) {
 function newGame() {
   session++;
   clearTimeout(botTimer);
+  clearPresentation();
   state = createInitialState({ rows: size, cols: size, firstPlayer });
   busy = false;
   previewMove = null;
   resultBar.classList.add('hidden');
   buildBoard();
+  updateThreeSidedPlots();
   renderScores();
   renderTally();
   renderTurn();
@@ -377,7 +388,9 @@ function scheduleBotMove() {
 
 function playMove(move) {
   busy = true;
+  goAgainEl.classList.add('hidden');
   const player = state.turn;
+  const previousStatus = getStatus(state);
   // Plots this line will finish: adjacent and already at three sides.
   const claimed = boxesCompletedBy(state, move) > 0
     ? adjacentBoxes(state, move).filter(({ r, c }) => boxSides(state, r, c) === 3)
@@ -391,18 +404,20 @@ function playMove(move) {
     if (!accepted || session !== moveSession) return;
     if (claimed.length > 0) {
       sound.pop(claimed.length);
-      for (const { r, c } of claimed) claimPlot(player, r, c);
+      showClaimedPlots(player, claimed);
       renderScores();
       bumpScore(player);
     }
+    recordChain(player, claimed.length);
+    updateThreeSidedPlots();
     const status = getStatus(state);
     if (status.over) {
-      finishGame(status);
+      finishGame(status, { scoreFrom: previousStatus.scores });
       return;
     }
     if (claimed.length > 0 && state.turn === player) {
       sound.again();
-      flashGoAgain();
+      flashGoAgain(claimed.length);
     }
     busy = false;
     renderTurn();
@@ -479,9 +494,24 @@ function drawSapLine(player, move, onDone) {
 
 function claimPlot(player, r, c, animate = true) {
   const fill = layers.fills.querySelector(`[data-plot="${CSS.escape(`${r},${c}`)}"]`);
-  if (fill) fill.classList.add(player === RED ? 'red' : 'blue');
+  if (fill) {
+    fill.classList.remove('three-sided');
+    fill.classList.add(player === RED ? 'red' : 'blue');
+  }
   sproutMaple(player, r, c, animate);
   if (animate) burst(player, r, c);
+}
+
+// Multiple plots land in reading order instead of all popping on one frame.
+// This is presentation only: the engine state and online push are already done.
+function showClaimedPlots(player, claimed) {
+  claimed.forEach(({ r, c }, index) => {
+    if (index === 0) {
+      claimPlot(player, r, c);
+    } else {
+      later(index * 120, () => claimPlot(player, r, c));
+    }
+  });
 }
 
 // A little maple sprouts in the plot, with the claimer's bucket on the trunk.
@@ -560,13 +590,60 @@ function burst(player, r, c) {
   ).onfinish = () => ring.remove();
 }
 
+// Three-sided plots are a UI hint derived from the current engine state. They
+// add no rule and are safe to repaint quietly during a reconnect/resume.
+function updateThreeSidedPlots() {
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      const fill = layers.fills.querySelector(`[data-plot="${CSS.escape(`${r},${c}`)}"]`);
+      if (!fill) continue;
+      const unclaimed = state.boxes[r * state.cols + c] === 0;
+      fill.classList.toggle('three-sided', unclaimed && boxSides(state, r, c) === 3);
+    }
+  }
+}
+
+function clearPresentation() {
+  chainPlayer = 0;
+  chainPlots = 0;
+  chainChip.classList.add('hidden');
+  goAgainEl.classList.add('hidden');
+  goMultiEl.classList.add('hidden');
+  winFlourish.replaceChildren();
+  announcer.textContent = '';
+  if (svg) {
+    svg.querySelectorAll('.winner-wash, .winner-settled').forEach((el) => {
+      el.classList.remove('winner-wash', 'winner-settled');
+      el.style.removeProperty('--wash-delay');
+    });
+  }
+}
+
+function recordChain(player, count) {
+  if (count === 0) {
+    chainPlayer = 0;
+    chainPlots = 0;
+    chainChip.classList.add('hidden');
+    return;
+  }
+  if (chainPlayer !== player) {
+    chainPlayer = player;
+    chainPlots = 0;
+  }
+  chainPlots += count;
+  chainChip.textContent = `🍁 ${chainPlots} ${chainPlots === 1 ? 'PLOT' : 'PLOTS'} THIS TURN`;
+  chainChip.className = player === RED ? 'red' : 'blue';
+  announcer.textContent = `${count === 1 ? 'Plot claimed' : `${count} plots claimed`}. `
+    + `${chainPlots} ${chainPlots === 1 ? 'plot' : 'plots'} this turn.`;
+}
+
 /** Repaint a received/resumed state without replaying its old animations. */
 function rebuildBoard() {
   session++;
   clearTimeout(botTimer);
   busy = false;
   previewMove = null;
-  goAgainEl.classList.add('hidden');
+  clearPresentation();
   resultBar.classList.add('hidden');
   rematchBtn.classList.remove('hidden');
   buildBoard();
@@ -590,14 +667,18 @@ function rebuildBoard() {
     }
   }
 
+  updateThreeSidedPlots();
   renderScores();
   renderTally();
   const status = getStatus(state);
-  if (status.over) finishGame(status);
+  if (status.over) finishGame(status, { celebrate: false });
   else renderTurn();
 }
 
-function flashGoAgain() {
+function flashGoAgain(count = 1) {
+  const milestone = count >= 3 ? 'TRIPLE!' : count === 2 ? 'DOUBLE!' : '';
+  goMultiEl.textContent = milestone;
+  goMultiEl.classList.toggle('hidden', !milestone);
   goAgainEl.classList.add('hidden');
   void goAgainEl.offsetWidth; // restart the animation on back-to-back claims
   goAgainEl.classList.remove('hidden');
@@ -636,6 +717,36 @@ function renderScores() {
     scoreEls[RED].querySelector('.s-name').textContent = 'RED';
     scoreEls[BLUE].querySelector('.s-name').textContent = 'BLUE';
   }
+  renderLeadMeter(status);
+}
+
+function leadName(player) {
+  if (mode === 'pass') return player === RED ? 'RED' : 'BLUE';
+  if (mode === 'online') return player === online.myPlayer
+    ? 'YOU'
+    : opponentName('PAL').toUpperCase();
+  return player === RED ? 'YOU' : BOT_NAMES[mode];
+}
+
+function renderLeadMeter(status) {
+  const redScore = status.scores[RED];
+  const blueScore = status.scores[BLUE];
+  const total = state.rows * state.cols;
+  const difference = redScore - blueScore;
+  const redShare = 50 + (difference / (2 * total)) * 100;
+  leadMeter.style.setProperty('--red-share', `${Math.max(0, Math.min(100, redShare))}%`);
+  if (difference === 0) {
+    leadLabel.textContent = 'EVEN';
+    leadMeter.setAttribute('aria-label', `Score tied at ${redScore} plots each`);
+    return;
+  }
+  const leader = difference > 0 ? RED : BLUE;
+  const margin = Math.abs(difference);
+  leadLabel.textContent = `${leadName(leader)} +${margin}`;
+  leadMeter.setAttribute(
+    'aria-label',
+    `${leadName(leader)} leads by ${margin} ${margin === 1 ? 'plot' : 'plots'}`
+  );
 }
 
 function bumpScore(player) {
@@ -705,53 +816,115 @@ function renderTally() {
 
 /* ------------------------------------------------------------- endgame */
 
-function finishGame(status) {
+function finishGame(status, { celebrate = true, scoreFrom = null } = {}) {
   renderTurn();
   let text = '';
   let cls = '';
   const score = `${status.scores[RED]}–${status.scores[BLUE]}`;
   if (status.draw) {
-    tally.quiet++;
+    if (celebrate) tally.quiet++;
     text = `AN EVEN SPLIT — ${score}`;
-    sound.draw();
-    firstPlayer = firstPlayer === RED ? BLUE : RED;
+    if (celebrate) {
+      sound.draw();
+      firstPlayer = firstPlayer === RED ? BLUE : RED;
+    }
   } else if (mode === 'online') {
     const iWon = status.winner === online.myPlayer;
-    tally[colorKey(status.winner)]++;
+    if (celebrate) tally[colorKey(status.winner)]++;
     cls = status.winner === RED ? 'red-win' : 'blue-win';
     if (iWon) {
       text = `YOU OUT-SUGAR ${opponentName('YOUR FRIEND').toUpperCase()}! ${score}`;
-      sound.win();
+      if (celebrate) sound.win();
     } else {
       text = `${opponentName('YOUR FRIEND').toUpperCase()} TAPS THE WHOLE HILLSIDE! ${score}`;
-      sound.lose();
+      if (celebrate) sound.lose();
     }
     firstPlayer = status.winner === RED ? BLUE : RED; // loser opens the next boil
   } else if (status.winner === RED) {
-    tally.red++;
+    if (celebrate) tally.red++;
     cls = 'red-win';
     text = mode === 'pass'
       ? `RED${WIN_LINES.pass[Math.floor(Math.random() * WIN_LINES.pass.length)]} ${score}`
       : `${WIN_LINES.you[Math.floor(Math.random() * WIN_LINES.you.length)]}${BOT_NAMES[mode]}! ${score}`;
-    sound.win();
+    if (celebrate) sound.win();
     firstPlayer = BLUE; // loser opens the next boil
   } else {
-    tally.blue++;
+    if (celebrate) tally.blue++;
     cls = 'blue-win';
     if (mode === 'pass') {
       text = `BLUE${WIN_LINES.pass[Math.floor(Math.random() * WIN_LINES.pass.length)]} ${score}`;
-      sound.win();
+      if (celebrate) sound.win();
     } else {
       text = `${WIN_LINES.bot[mode]} ${score}`;
-      sound.lose();
+      if (celebrate) sound.lose();
     }
     firstPlayer = RED;
   }
   renderTally();
   resultText.textContent = text;
   resultText.className = cls;
-  // Let the last claim land before the banner rises.
-  later(600, () => resultBar.classList.remove('hidden'));
+  resultBar.classList.toggle('quiet-result', !celebrate);
+  if (!status.draw) showWinnerAftermath(status.winner, celebrate);
+  if (celebrate && scoreFrom) countUpScores(scoreFrom, status.scores);
+  resultBar.classList.remove('hidden');
+  if (celebrate) {
+    announcer.textContent = text;
+    rematchBtn.focus({ preventScroll: true });
+  }
+}
+
+function showWinnerAftermath(winner, animate) {
+  const fills = [];
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      if (state.boxes[r * state.cols + c] !== winner) continue;
+      const fill = layers.fills.querySelector(`[data-plot="${CSS.escape(`${r},${c}`)}"]`);
+      if (!fill) continue;
+      const sweep = (r * state.cols + c) / Math.max(1, state.rows * state.cols - 1);
+      fill.style.setProperty('--wash-delay', `${Math.round(sweep * 420)}ms`);
+      fill.classList.add(animate && !reducedMotion ? 'winner-wash' : 'winner-settled');
+      fills.push(fill);
+    }
+  }
+  if (animate && !reducedMotion && fills.length > 0) gustMapleLeaves(winner);
+}
+
+function gustMapleLeaves(winner) {
+  winFlourish.replaceChildren();
+  winFlourish.className = winner === RED ? 'red' : 'blue';
+  for (let i = 0; i < 18; i++) {
+    const leaf = document.createElement('span');
+    leaf.textContent = '🍁';
+    const drift = -30 + Math.random() * 60;
+    leaf.style.setProperty('--leaf-y', `${8 + Math.random() * 76}%`);
+    leaf.style.setProperty('--leaf-delay', `${Math.random() * 260}ms`);
+    leaf.style.setProperty('--leaf-drift', `${drift}px`);
+    leaf.style.setProperty('--leaf-end', `${-drift}px`);
+    leaf.style.setProperty('--leaf-spin', `${180 + Math.random() * 300}deg`);
+    winFlourish.appendChild(leaf);
+  }
+  later(1800, () => winFlourish.replaceChildren());
+}
+
+function countUpScores(from, target) {
+  if (reducedMotion) return;
+  const effectSession = session;
+  const duration = 650;
+  const started = performance.now();
+  for (const player of [RED, BLUE]) {
+    scoreEls[player].querySelector('.s-count').textContent = from[player];
+  }
+  const frame = (now) => {
+    if (session !== effectSession) return;
+    const progress = Math.min(1, (now - started) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    for (const player of [RED, BLUE]) {
+      const value = Math.round(from[player] + (target[player] - from[player]) * eased);
+      scoreEls[player].querySelector('.s-count').textContent = value;
+    }
+    if (progress < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 /* ------------------------------------------------------------- online play */
@@ -967,6 +1140,7 @@ function onRemoteState(newState) {
   pollErrors = 0;
   pushStalled = false;
   const previous = state;
+  const previousStatus = getStatus(previous);
   state = newState;
   size = newState.rows;
   const added = addedEdges(previous, newState);
@@ -975,6 +1149,7 @@ function onRemoteState(newState) {
   if (!busy && added && added.length === 1) {
     // One ordinary remote tap: animate it. Several taps (including a fast
     // claim chain), a rematch, or conflict truth repaint cold below.
+    goAgainEl.classList.add('hidden');
     const moveSession = session;
     const [{ player, ...move }] = added;
     busy = true;
@@ -983,18 +1158,20 @@ function onRemoteState(newState) {
       if (session !== moveSession) return;
       if (claimed.length > 0) {
         sound.pop(claimed.length);
-        for (const plot of claimed) claimPlot(plot.player, plot.r, plot.c);
+        showClaimedPlots(player, claimed);
         renderScores();
         bumpScore(player);
       }
+      recordChain(player, claimed.length);
+      updateThreeSidedPlots();
       const status = getStatus(state);
       if (status.over) {
-        finishGame(status);
+        finishGame(status, { scoreFrom: previousStatus.scores });
         return;
       }
       if (claimed.length > 0 && state.turn === player) {
         sound.again();
-        flashGoAgain();
+        flashGoAgain(claimed.length);
       }
       busy = false;
       renderTurn();
