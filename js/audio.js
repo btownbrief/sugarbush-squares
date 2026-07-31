@@ -26,6 +26,10 @@ function tone(freq, start, dur, { type = 'sine', gain = 0.16, slide = 0 } = {}) 
   g.gain.linearRampToValueAtTime(gain, t + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
   osc.connect(g).connect(a.destination);
+  osc.addEventListener('ended', () => {
+    osc.disconnect();
+    g.disconnect();
+  }, { once: true });
   osc.start(t);
   osc.stop(t + dur + 0.05);
 }
@@ -51,6 +55,13 @@ export const sound = {
     for (let i = 0; i < count; i++) {
       tone(340 + i * 90, i * 0.09, 0.13, { type: 'sine', gain: 0.22, slide: 260 });
       tone(1150 + i * 150, i * 0.09 + 0.02, 0.06, { type: 'triangle', gain: 0.08 });
+    }
+    // A double/triple claim gets one warm resolving chord, while ordinary
+    // single-plot captures keep their existing small pop.
+    if (count > 1) {
+      const start = count * 0.08;
+      tone(262, start, 0.2, { type: 'triangle', gain: 0.09 });
+      tone(count >= 3 ? 784 : 659, start + 0.04, 0.24, { type: 'triangle', gain: 0.12 });
     }
   },
   /** Extra turn: a quick upward maple chime. */
