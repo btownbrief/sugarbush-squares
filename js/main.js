@@ -1323,3 +1323,32 @@ function startFlurry() {
     holder.appendChild(flake);
   }
 }
+
+/* ------------------------------------------------- crew-link invites */
+// Text a link instead of reading letters aloud: ?join=ABCD opens the join
+// panel with the code filled in, then scrubs the URL so refreshes don't
+// re-trigger it. Canonical pattern: four-in-a-rowboat (ROOMS-INTEGRATION §6).
+
+$('inviteBtn').addEventListener('click', async () => {
+  const code = ($('lobbyCode').textContent || '').trim();
+  if (!code) return;
+  const url = `${location.origin}${location.pathname}?join=${code}`;
+  const text = `🌳 Race me box for box — tap to join my Sugarbush Squares game: ${url}`;
+  try {
+    if (navigator.share && /Mobi|Android|iPhone|iPad/.test(navigator.userAgent)) {
+      await navigator.share({ text });
+    } else {
+      await navigator.clipboard.writeText(url);
+      $('inviteBtn').textContent = '✓ LINK COPIED';
+      setTimeout(() => { $('inviteBtn').textContent = '📲 SEND AN INVITE'; }, 1800);
+    }
+  } catch { /* share sheet closed */ }
+});
+
+(() => {
+  const code = new URLSearchParams(location.search).get('join');
+  if (!code || !/^[A-Za-z0-9]{4}$/.test(code)) return;
+  history.replaceState(null, '', location.pathname);
+  openPanel('join');
+  $('opCode').value = code.toUpperCase();
+})();
