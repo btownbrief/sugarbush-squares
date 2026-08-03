@@ -39,6 +39,7 @@ Plain static site — no build step, no frameworks, no npm. `index.html` +
 | `js/bot.js` | the Sap Hauler and the Boiler; only ever calls the engine's public API |
 | `js/main.js` | UI only: builds the board SVG, animates sap lines / sprouting maples, dispatches moves, keeps the session tally |
 | `js/audio.js` | procedural WebAudio taps, pops and fanfares, no audio files |
+| `js/leaderboard.js` | monthly leaderboard client (Supabase); vs-bot wins only, no accounts |
 
 Every push to `main` deploys to GitHub Pages via `.github/workflows/deploy.yml`.
 
